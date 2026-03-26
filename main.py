@@ -1,8 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from email.message import EmailMessage
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def get_danawa_lowest_price(model_name):
@@ -53,16 +56,20 @@ def get_danawa_lowest_price(model_name):
 
 
 def send_email_alert(subject, body, to_email):
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
-    sender_email = "본인구글이메일@gmail.com"
-    sender_password = "발급받은_구글_앱비밀번호"  # 띄어쓰기 없이 16자리 입력
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_password = os.getenv("SENDER_PASSWORD")
 
-    msg = MIMEMultipart()
+    if not sender_email or not sender_password:
+        print(".env 파일에 이메일 계정 정보가 없습니다!")
+        return None
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
     msg["From"] = sender_email
     msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    msg.set_content(body)
 
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
@@ -78,8 +85,8 @@ def send_email_alert(subject, body, to_email):
 def main():
     # 설정값
     target_model = "MFHP4KH/A"  # 검색할 모델명
-    target_price = 280000  # 알림을 받을 기준 가격 (예: 28만 원)
-    my_email = "알림받을이메일@example.com"
+    target_price = 289000  # 알림을 받을 기준 가격 (예: 28만 원)
+    my_email = os.getenv("RECEIVER_EMAIL")
 
     current_price = get_danawa_lowest_price(target_model)
 
@@ -87,12 +94,12 @@ def main():
         print(f"현재 최저가: {current_price:,}원")
 
         # 현재 가격이 목표 가격보다 작거나 같으면 메일 발송
-        # if current_price <= target_price:
-        #     subject = f"🔔 [최저가 알림] {target_model} 가격 하락!"
-        #     body = f"기다리시던 {target_model}의 현재 최저가가 {current_price:,}원으로 떨어졌습니다.\n목표가: {target_price:,}원"
-        #     send_email_alert(subject, body, my_email)
-        # else:
-        #     print("아직 설정한 목표 가격까지 떨어지지 않았습니다.")
+        if current_price <= target_price:
+            subject = f"🔔 [최저가 알림] {target_model} 가격 하락!"
+            body = f"기다리시던 {target_model}의 현재 최저가가 {current_price:,}원으로 떨어졌습니다.\n목표가: {target_price:,}원"
+            send_email_alert(subject, body, my_email)
+        else:
+            print("아직 설정한 목표 가격까지 떨어지지 않았습니다.")
     else:
         print("가격을 파싱하지 못했습니다. HTML 구조나 CSS 선택자를 확인해 주세요.")
 

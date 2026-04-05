@@ -1,17 +1,19 @@
-import json
 import time
 import os
 from datetime import datetime
-from main import get_danawa_lowest_price, send_email_alert
+from main import get_danawa_lowest_price, send_email_alert, load_config
 from dotenv import load_dotenv
 
 load_dotenv()
 
-HISTORY_FILE = "price_history.json"
-CHECK_INTERVAL_MINUTES = 30
+config = load_config()
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_history.json")
+CHECK_INTERVAL_MINUTES = config.get("check_interval_minutes", 30)
+MIN_PRICE_FILTER = config.get("min_price_filter", 100000)
 
 
 def load_history():
+    import json
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -19,6 +21,7 @@ def load_history():
 
 
 def save_history(history):
+    import json
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
@@ -27,7 +30,7 @@ def check_and_alert(model_name):
     history = load_history()
     record = history.get(model_name, {"lowest_price": None})
 
-    current_price = get_danawa_lowest_price(model_name)
+    current_price = get_danawa_lowest_price(model_name, MIN_PRICE_FILTER)
     if current_price is None:
         print(f"[{model_name}] 가격을 가져오지 못했습니다.")
         return
@@ -71,10 +74,7 @@ def check_and_alert(model_name):
 
 
 def main():
-    # 감시할 모델 목록 (여러 개 추가 가능)
-    watch_list = [
-        "MFHP4KH/A",
-    ]
+    watch_list = [item["model"] for item in config["watch_list"]]
 
     print(f"=== 가격 감시 배치 시작 (주기: {CHECK_INTERVAL_MINUTES}분) ===")
     print(f"감시 대상: {watch_list}")

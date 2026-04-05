@@ -1,0 +1,10 @@
+{
+  "watch_list": [
+    {
+      "model": "MFHP4KH/A",
+      "target_price": 289000
+    }
+  ],
+  "check_interval_minutes": 30,
+  "min_price_filter": 100000
+}

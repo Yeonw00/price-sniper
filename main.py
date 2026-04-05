@@ -1,3 +1,4 @@
+import json
 import requests
 from bs4 import BeautifulSoup
 import smtplib
@@ -7,8 +8,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
-def get_danawa_lowest_price(model_name):
+
+def load_config():
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_danawa_lowest_price(model_name, min_price_filter=100000):
     # 다나와 검색 URL
     url = "https://search.danawa.com/dsearch.php"
     params = {"query": model_name}
@@ -37,7 +45,7 @@ def get_danawa_lowest_price(model_name):
                 price_part = raw_text.split("원")[0]
                 price = int(price_part.replace(",", "").strip())
 
-                if price > 100000:
+                if price > min_price_filter:
                     price_list.append(price)
             except ValueError:
                 continue
@@ -83,25 +91,27 @@ def send_email_alert(subject, body, to_email):
 
 
 def main():
-    # 설정값
-    target_model = "MFHP4KH/A"  # 검색할 모델명
-    target_price = 289000  # 알림을 받을 기준 가격 (예: 28만 원)
+    config = load_config()
     my_email = os.getenv("RECEIVER_EMAIL")
+    min_price_filter = config.get("min_price_filter", 100000)
 
-    current_price = get_danawa_lowest_price(target_model)
+    for item in config["watch_list"]:
+        target_model = item["model"]
+        target_price = item["target_price"]
 
-    if current_price:
-        print(f"현재 최저가: {current_price:,}원")
+        current_price = get_danawa_lowest_price(target_model, min_price_filter)
 
-        # 현재 가격이 목표 가격보다 작거나 같으면 메일 발송
-        if current_price <= target_price:
-            subject = f"🔔 [최저가 알림] {target_model} 가격 하락!"
-            body = f"기다리시던 {target_model}의 현재 최저가가 {current_price:,}원으로 떨어졌습니다.\n목표가: {target_price:,}원"
-            send_email_alert(subject, body, my_email)
+        if current_price:
+            print(f"[{target_model}] 현재 최저가: {current_price:,}원")
+
+            if current_price <= target_price:
+                subject = f"[최저가 알림] {target_model} 가격 하락!"
+                body = f"기다리시던 {target_model}의 현재 최저가가 {current_price:,}원으로 떨어졌습니다.\n목표가: {target_price:,}원"
+                send_email_alert(subject, body, my_email)
+            else:
+                print(f"[{target_model}] 아직 목표가({target_price:,}원)까지 떨어지지 않았습니다.")
         else:
-            print("아직 설정한 목표 가격까지 떨어지지 않았습니다.")
-    else:
-        print("가격을 파싱하지 못했습니다. HTML 구조나 CSS 선택자를 확인해 주세요.")
+            print(f"[{target_model}] 가격을 파싱하지 못했습니다. HTML 구조나 CSS 선택자를 확인해 주세요.")
 
 
 if __name__ == "__main__":

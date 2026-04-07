@@ -101,7 +101,7 @@ def main():
 
         current_price = get_danawa_lowest_price(target_model, min_price_filter)
 
-        if current_price:
+        if current_price is not None:
             print(f"[{target_model}] 현재 최저가: {current_price:,}원")
 
             if current_price <= target_price:

@@ -1,3 +1,4 @@
+import json
 import time
 import os
 from datetime import datetime
@@ -9,11 +10,9 @@ load_dotenv()
 config = load_config()
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_history.json")
 CHECK_INTERVAL_MINUTES = config.get("check_interval_minutes", 30)
-MIN_PRICE_FILTER = config.get("min_price_filter", 100000)
 
 
 def load_history():
-    import json
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -21,7 +20,6 @@ def load_history():
 
 
 def save_history(history):
-    import json
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
@@ -30,7 +28,7 @@ def check_and_alert(model_name):
     history = load_history()
     record = history.get(model_name, {"lowest_price": None})
 
-    current_price = get_danawa_lowest_price(model_name, MIN_PRICE_FILTER)
+    current_price = get_danawa_lowest_price(model_name, config)
     if current_price is None:
         print(f"[{model_name}] 가격을 가져오지 못했습니다.")
         return

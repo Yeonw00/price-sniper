@@ -16,15 +16,15 @@ def load_config():
         return json.load(f)
 
 
-def get_danawa_lowest_price(model_name, min_price_filter=100000):
-    # 다나와 검색 URL
-    url = "https://search.danawa.com/dsearch.php"
-    params = {"query": model_name}
+def get_danawa_lowest_price(model_name, config):
+    min_price_filter = config.get("min_price_filter", 100000)
+    url = config.get("search_url", "https://search.danawa.com/dsearch.php")
+    user_agent = config.get("user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    css_selector = config.get("price_css_selector", ".price_sect strong")
+    currency = config.get("currency_symbol", "원")
 
-    # 봇 차단 방지를 위한 User-Agent 설정
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+    params = {"query": model_name}
+    headers = {"User-Agent": user_agent}
 
     print(f"[{model_name}] 검색 결과를 가져오는 중...")
     response = requests.get(url, headers=headers, params=params)
@@ -32,9 +32,8 @@ def get_danawa_lowest_price(model_name, min_price_filter=100000):
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # 주의: 다나와 웹페이지 구조에 따라 아래 선택자는 언제든 수정이 필요할 수 있습니다.
-    # 크롬 개발자 도구로 실제 첫 번째 상품 가격이 있는 태그를 확인하세요.
-    price_elements = soup.select(".price_sect strong")
+    # 주의: 다나와 웹페이지 구조에 따라 config.json의 price_css_selector 수정이 필요할 수 있습니다.
+    price_elements = soup.select(css_selector)
 
     if price_elements:
         price_list = []
@@ -42,7 +41,7 @@ def get_danawa_lowest_price(model_name, min_price_filter=100000):
         for element in price_elements:
             raw_text = element.text.strip()
             try:
-                price_part = raw_text.split("원")[0]
+                price_part = raw_text.split(currency)[0]
                 price = int(price_part.replace(",", "").strip())
 
                 if price > min_price_filter:
@@ -64,13 +63,13 @@ def get_danawa_lowest_price(model_name, min_price_filter=100000):
 
 
 def send_email_alert(subject, body, to_email):
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = os.getenv("SMTP_PORT")
     sender_email = os.getenv("SENDER_EMAIL")
     sender_password = os.getenv("SENDER_PASSWORD")
 
-    if not sender_email or not sender_password:
-        print(".env 파일에 이메일 계정 정보가 없습니다!")
+    if not all([smtp_server, smtp_port, sender_email, sender_password]):
+        print(".env 파일에 SMTP/이메일 계정 정보가 누락되어 있습니다!")
         return None
 
     msg = EmailMessage()
@@ -80,7 +79,7 @@ def send_email_alert(subject, body, to_email):
     msg.set_content(body)
 
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP(smtp_server, int(smtp_port))
         server.starttls()  # TLS 보안 연결
         server.login(sender_email, sender_password)
         server.send_message(msg)
@@ -93,13 +92,12 @@ def send_email_alert(subject, body, to_email):
 def main():
     config = load_config()
     my_email = os.getenv("RECEIVER_EMAIL")
-    min_price_filter = config.get("min_price_filter", 100000)
 
     for item in config["watch_list"]:
         target_model = item["model"]
         target_price = item["target_price"]
 
-        current_price = get_danawa_lowest_price(target_model, min_price_filter)
+        current_price = get_danawa_lowest_price(target_model, config)
 
         if current_price is not None:
             print(f"[{target_model}] 현재 최저가: {current_price:,}원")

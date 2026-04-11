@@ -1,4 +1,5 @@
 import json
+import time
 import requests
 from bs4 import BeautifulSoup
 import smtplib
@@ -16,19 +17,43 @@ def load_config():
         return json.load(f)
 
 
+def fetch_with_retry(url, headers, params, timeout, max_retries, backoff_seconds):
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
+            last_error = e
+            if attempt < max_retries:
+                wait = backoff_seconds * attempt
+                print(f"  요청 실패 ({type(e).__name__}): {e}. {wait}초 후 재시도 ({attempt}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                print(f"  요청 최종 실패 ({max_retries}회 시도): {e}")
+    raise last_error
+
+
 def get_danawa_lowest_price(model_name, config):
     min_price_filter = config.get("min_price_filter", 100000)
     url = config.get("search_url", "https://search.danawa.com/dsearch.php")
     user_agent = config.get("user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     css_selector = config.get("price_css_selector", ".price_sect strong")
     currency = config.get("currency_symbol", "원")
+    timeout = config.get("request_timeout_seconds", 10)
+    max_retries = config.get("max_retries", 3)
+    backoff_seconds = config.get("retry_backoff_seconds", 5)
 
     params = {"query": model_name}
     headers = {"User-Agent": user_agent}
 
     print(f"[{model_name}] 검색 결과를 가져오는 중...")
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
+    try:
+        response = fetch_with_retry(url, headers, params, timeout, max_retries, backoff_seconds)
+    except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
+        print(f"[{model_name}] 요청 실패: {e}")
+        return None
 
     soup = BeautifulSoup(response.text, "html.parser")
 

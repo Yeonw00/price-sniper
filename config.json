@@ -13,5 +13,6 @@
   "currency_symbol": "원",
   "request_timeout_seconds": 10,
   "max_retries": 3,
-  "retry_backoff_seconds": 5
+  "retry_backoff_seconds": 5,
+  "log_file": "price_sniper.log"
 }

@@ -6,3 +6,6 @@ venv/
 
 # 가격 이력 데이터
 price_history.json
+
+# 로그 파일
+*.log

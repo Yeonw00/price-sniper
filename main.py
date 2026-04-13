@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import requests
 from bs4 import BeautifulSoup
@@ -10,11 +11,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def load_config():
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def setup_logging(config):
+    log_file = config.get("log_file", "price_sniper.log")
+    log_path = os.path.join(BASE_DIR, log_file)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.FileHandler(log_path, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
+
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_with_retry(url, headers, params, timeout, max_retries, backoff_seconds):
@@ -28,10 +48,10 @@ def fetch_with_retry(url, headers, params, timeout, max_retries, backoff_seconds
             last_error = e
             if attempt < max_retries:
                 wait = backoff_seconds * attempt
-                print(f"  요청 실패 ({type(e).__name__}): {e}. {wait}초 후 재시도 ({attempt}/{max_retries})...")
+                logger.warning(f"요청 실패 ({type(e).__name__}): {e}. {wait}초 후 재시도 ({attempt}/{max_retries})...")
                 time.sleep(wait)
             else:
-                print(f"  요청 최종 실패 ({max_retries}회 시도): {e}")
+                logger.error(f"요청 최종 실패 ({max_retries}회 시도): {e}")
     raise last_error
 
 
@@ -48,11 +68,11 @@ def get_danawa_lowest_price(model_name, config):
     params = {"query": model_name}
     headers = {"User-Agent": user_agent}
 
-    print(f"[{model_name}] 검색 결과를 가져오는 중...")
+    logger.info(f"[{model_name}] 검색 결과를 가져오는 중...")
     try:
         response = fetch_with_retry(url, headers, params, timeout, max_retries, backoff_seconds)
     except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
-        print(f"[{model_name}] 요청 실패: {e}")
+        logger.error(f"[{model_name}] 요청 실패: {e}")
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
@@ -76,14 +96,14 @@ def get_danawa_lowest_price(model_name, config):
 
         if price_list:
             lowest_price = min(price_list)
-            print(f"수집된 전체 가격들: {price_list}")
+            logger.info(f"수집된 전체 가격들: {price_list}")
             return lowest_price
         else:
-            print("조건에 맞는 유효한 가격을 찾지 못했습니다.")
+            logger.warning("조건에 맞는 유효한 가격을 찾지 못했습니다.")
             return None
 
     else:
-        print("해당 선택자로 요소를 찾지 못했습니다.")
+        logger.warning("해당 선택자로 요소를 찾지 못했습니다.")
         return None
 
 
@@ -94,7 +114,7 @@ def send_email_alert(subject, body, to_email):
     sender_password = os.getenv("SENDER_PASSWORD")
 
     if not all([smtp_server, smtp_port, sender_email, sender_password]):
-        print(".env 파일에 SMTP/이메일 계정 정보가 누락되어 있습니다!")
+        logger.error(".env 파일에 SMTP/이메일 계정 정보가 누락되어 있습니다!")
         return None
 
     msg = EmailMessage()
@@ -109,13 +129,14 @@ def send_email_alert(subject, body, to_email):
         server.login(sender_email, sender_password)
         server.send_message(msg)
         server.quit()
-        print("성공적으로 이메일 알림을 보냈습니다!")
+        logger.info("성공적으로 이메일 알림을 보냈습니다!")
     except Exception as e:
-        print(f"이메일 발송 실패: {e}")
+        logger.error(f"이메일 발송 실패: {e}")
 
 
 def main():
     config = load_config()
+    setup_logging(config)
     my_email = os.getenv("RECEIVER_EMAIL")
 
     for item in config["watch_list"]:
@@ -125,16 +146,16 @@ def main():
         current_price = get_danawa_lowest_price(target_model, config)
 
         if current_price is not None:
-            print(f"[{target_model}] 현재 최저가: {current_price:,}원")
+            logger.info(f"[{target_model}] 현재 최저가: {current_price:,}원")
 
             if current_price <= target_price:
                 subject = f"[최저가 알림] {target_model} 가격 하락!"
                 body = f"기다리시던 {target_model}의 현재 최저가가 {current_price:,}원으로 떨어졌습니다.\n목표가: {target_price:,}원"
                 send_email_alert(subject, body, my_email)
             else:
-                print(f"[{target_model}] 아직 목표가({target_price:,}원)까지 떨어지지 않았습니다.")
+                logger.info(f"[{target_model}] 아직 목표가({target_price:,}원)까지 떨어지지 않았습니다.")
         else:
-            print(f"[{target_model}] 가격을 파싱하지 못했습니다. HTML 구조나 CSS 선택자를 확인해 주세요.")
+            logger.warning(f"[{target_model}] 가격을 파싱하지 못했습니다. HTML 구조나 CSS 선택자를 확인해 주세요.")
 
 
 if __name__ == "__main__":

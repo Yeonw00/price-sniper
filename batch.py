@@ -1,13 +1,16 @@
 import json
+import logging
 import time
 import os
 from datetime import datetime
-from main import get_danawa_lowest_price, send_email_alert, load_config
+from main import get_danawa_lowest_price, send_email_alert, load_config, setup_logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
 config = load_config()
+setup_logging(config)
+logger = logging.getLogger(__name__)
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_history.json")
 CHECK_INTERVAL_MINUTES = config.get("check_interval_minutes", 30)
 
@@ -30,13 +33,16 @@ def check_and_alert(model_name):
 
     current_price = get_danawa_lowest_price(model_name, config)
     if current_price is None:
-        print(f"[{model_name}] 가격을 가져오지 못했습니다.")
+        logger.warning(f"[{model_name}] 가격을 가져오지 못했습니다.")
         return
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prev_lowest = record.get("lowest_price")
 
-    print(f"[{now}] [{model_name}] 현재가: {current_price:,}원 | 역대 최저가: {prev_lowest:,}원" if prev_lowest else f"[{now}] [{model_name}] 현재가: {current_price:,}원 | 첫 조회")
+    if prev_lowest:
+        logger.info(f"[{model_name}] 현재가: {current_price:,}원 | 역대 최저가: {prev_lowest:,}원")
+    else:
+        logger.info(f"[{model_name}] 현재가: {current_price:,}원 | 첫 조회")
 
     if prev_lowest is None or current_price < prev_lowest:
         # 역대 최저가 갱신
@@ -65,27 +71,26 @@ def check_and_alert(model_name):
                 f"조회 시간: {now}"
             )
 
-        print(f"  -> 최저가 갱신! 알림 발송 중...")
+        logger.info(f"[{model_name}] 최저가 갱신! 알림 발송 중...")
         send_email_alert(subject, body, receiver)
     else:
-        print(f"  -> 최저가 변동 없음.")
+        logger.info(f"[{model_name}] 최저가 변동 없음.")
 
 
 def main():
     watch_list = [item["model"] for item in config["watch_list"]]
 
-    print(f"=== 가격 감시 배치 시작 (주기: {CHECK_INTERVAL_MINUTES}분) ===")
-    print(f"감시 대상: {watch_list}")
-    print()
+    logger.info(f"=== 가격 감시 배치 시작 (주기: {CHECK_INTERVAL_MINUTES}분) ===")
+    logger.info(f"감시 대상: {watch_list}")
 
     while True:
         for model in watch_list:
             try:
                 check_and_alert(model)
             except Exception as e:
-                print(f"[{model}] 오류 발생: {e}")
+                logger.error(f"[{model}] 오류 발생: {e}")
 
-        print(f"\n다음 조회까지 {CHECK_INTERVAL_MINUTES}분 대기...\n")
+        logger.info(f"다음 조회까지 {CHECK_INTERVAL_MINUTES}분 대기...")
         time.sleep(CHECK_INTERVAL_MINUTES * 60)
 
 

@@ -16,15 +16,39 @@ CHECK_INTERVAL_MINUTES = config.get("check_interval_minutes", 30)
 
 
 def load_history():
-    if os.path.exists(HISTORY_FILE):
+    if not os.path.exists(HISTORY_FILE):
+        return {}
+    try:
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {}
+    except json.JSONDecodeError as e:
+        backup_path = f"{HISTORY_FILE}.corrupted.{int(time.time())}"
+        try:
+            os.rename(HISTORY_FILE, backup_path)
+            logger.error(f"price_history.json 손상 감지 ({e}). 백업: {backup_path}")
+        except OSError as rename_err:
+            logger.error(f"손상된 이력 파일 백업 실패: {rename_err}")
+        return {}
+    except OSError as e:
+        logger.error(f"이력 파일 읽기 실패: {e}. 빈 이력으로 진행합니다.")
+        return {}
 
 
 def save_history(history):
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    tmp_path = f"{HISTORY_FILE}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, HISTORY_FILE)
+    except OSError as e:
+        logger.error(f"이력 파일 저장 실패: {e}")
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def check_and_alert(model_name):

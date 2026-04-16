@@ -14,9 +14,33 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+class ConfigError(Exception):
+    pass
+
+
+def validate_config(config):
+    watch_list = config.get("watch_list")
+    if not isinstance(watch_list, list) or not watch_list:
+        raise ConfigError("config.json의 'watch_list'가 비어있거나 리스트가 아닙니다.")
+
+    for idx, item in enumerate(watch_list):
+        if not isinstance(item, dict):
+            raise ConfigError(f"watch_list[{idx}]이 객체가 아닙니다.")
+
+        model = item.get("model")
+        if not isinstance(model, str) or not model.strip():
+            raise ConfigError(f"watch_list[{idx}]의 'model'이 비어있거나 문자열이 아닙니다.")
+
+        target_price = item.get("target_price")
+        if not isinstance(target_price, int) or target_price <= 0:
+            raise ConfigError(f"watch_list[{idx}] ({model})의 'target_price'가 양의 정수가 아닙니다.")
+
+
 def load_config():
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+    validate_config(config)
+    return config
 
 
 def setup_logging(config):
@@ -135,7 +159,13 @@ def send_email_alert(subject, body, to_email):
 
 
 def main():
-    config = load_config()
+    try:
+        config = load_config()
+    except ConfigError as e:
+        logging.basicConfig(level=logging.ERROR, format="%(asctime)s [%(levelname)s] %(message)s")
+        logging.error(f"설정 오류: {e}")
+        raise SystemExit(1)
+
     setup_logging(config)
     my_email = os.getenv("RECEIVER_EMAIL")
 

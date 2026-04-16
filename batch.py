@@ -3,12 +3,18 @@ import logging
 import time
 import os
 from datetime import datetime
-from main import get_danawa_lowest_price, send_email_alert, load_config, setup_logging
+from main import get_danawa_lowest_price, send_email_alert, load_config, setup_logging, ConfigError
 from dotenv import load_dotenv
 
 load_dotenv()
 
-config = load_config()
+try:
+    config = load_config()
+except ConfigError as e:
+    logging.basicConfig(level=logging.ERROR, format="%(asctime)s [%(levelname)s] %(message)s")
+    logging.error(f"설정 오류: {e}")
+    raise SystemExit(1)
+
 setup_logging(config)
 logger = logging.getLogger(__name__)
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_history.json")

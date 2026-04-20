@@ -36,7 +36,15 @@ def validate_config(config):
             raise ConfigError(f"watch_list[{idx}] ({model})의 'target_price'가 양의 정수가 아닙니다.")
 
 
+def validate_env():
+    required = ["SMTP_SERVER", "SMTP_PORT", "SENDER_EMAIL", "SENDER_PASSWORD", "RECEIVER_EMAIL"]
+    missing = [key for key in required if not os.getenv(key)]
+    if missing:
+        raise ConfigError(f".env 파일에 필수 항목이 누락되어 있습니다: {', '.join(missing)}")
+
+
 def load_config():
+    validate_env()
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         config = json.load(f)
     validate_config(config)
